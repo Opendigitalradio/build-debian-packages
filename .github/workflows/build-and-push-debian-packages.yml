@@ -1,0 +1,72 @@
+name: Build And Push Debian Packages
+run-name: Build and push ${{ inputs.tool }}
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Opendigitalradio tool'
+        required: true
+        default: 'odr-audioenc'
+        type: choice
+        options:
+          - odr-audioenc
+          - odr-padenc
+          - odr-dabmux
+          - odr-dabmod
+
+jobs:
+  build-debs:
+    name: build-debs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        codename: [bookworm, bullseye]
+        arch: [amd64, arm64, armhf]
+    steps:
+      -
+        name: checkout
+        uses: actions/checkout@v3
+        with:
+          github-server-url: ${{ vars.DEBIAN_GIT_SERVER }}
+          repository: ${{ vars.DEBIAN_GIT_OWNER }}/${{ inputs.tool }}
+          ref: debian/${{ matrix.codename }}
+          fetch-depth: '0'
+          token: ${{ secrets.DEBIAN_GIT_TOKEN }}
+      -
+        name: build
+        uses: jtdor/build-deb-action@v1
+        env:
+          DEB_BUILD_OPTIONS: noautodbgsym
+        with:
+          docker-image: "debian:${{ matrix.codename }}-slim"
+          buildpackage-opts: --build=full
+          extra-build-deps: git pristine-tar
+          before-build-hook: pristine-tar checkout ../$(pristine-tar list | sort | tail -n 1)
+          host-arch: ${{ matrix.arch }}
+      -
+        name: save artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.codename }}
+          path: debian/artifacts/
+  push-debs:
+    name: push-debs
+    needs: build-debs
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: restore artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifact
+      -
+        name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.APT_SSH_KEY }}
+          name: id_ed25519
+          known_hosts: ${{ vars.APT_SSH_KNOWN_HOSTS }}
+      -
+        name: rsync over ssh
+        run: rsync -rv -e 'ssh -p 222' artifact/ ${{ vars.APT_SSH_TO }}
