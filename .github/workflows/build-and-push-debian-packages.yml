@@ -38,6 +38,7 @@ jobs:
         uses: jtdor/build-deb-action@v1
         env:
           DEB_BUILD_OPTIONS: noautodbgsym
+          PKG_CONFIG_PATH: '/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig'
         with:
           docker-image: "debian:${{ matrix.codename }}-slim"
           buildpackage-opts: --build=full
